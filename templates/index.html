@@ -129,8 +129,12 @@
                                 datalabels: {
                                     align: 'end', // Align labels at the end of the line
                                     anchor: 'end', // Anchor labels to the end of the data point
+                                    // formatter: (value, context) => {
+                                    //     const datasetLabel = context.dataset.label; // Get the dataset label
+                                    //     return `${datasetLabel}\n\t${value}°F`; // Combine the label with the value
+                                    // },
                                     formatter: (value, context) => {
-                                        return `${value}°F`; // Format the label
+                                        return `${value}°F`; // Combine the label with the value
                                     },
                                     font: {
                                         size: 10
