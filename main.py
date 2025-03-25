@@ -2,13 +2,30 @@ from flask import Flask, render_template, jsonify, request
 import requests
 import json
 import pandas as pd  # Add pandas for data manipulation
+import os
+
 app = Flask(__name__, static_folder="static")
 
 # In-memory cache for weather data
 weather_cache = {}
 
+# File to store weather history
+WEATHER_HISTORY_FILE = "weather_history.json"
+
+# Load weather history from file
+def load_weather_history():
+    if os.path.exists(WEATHER_HISTORY_FILE):
+        with open(WEATHER_HISTORY_FILE, "r") as file:
+            return json.load(file)
+    return []
+
+# Save weather history to file
+def save_weather_history():
+    with open(WEATHER_HISTORY_FILE, "w") as file:
+        json.dump(weather_history, file, indent=4)
+
 # List to store historical weather data and trends
-weather_history = []
+weather_history = load_weather_history()
 
 def scrape_weather(latitude, longitude, start_date, end_date):
     # Fetch weather data from Open-Meteo API
@@ -39,10 +56,17 @@ def scrape_weather(latitude, longitude, start_date, end_date):
 
 def calculate_trends(new_data):
     trends = {}
+    print(json.dumps(weather_history, indent=2))
     for date, new_weather in new_data.items():
-        if date in weather_cache:
-            old_weather = weather_cache[date]
-            temp_diff = round(new_weather["temp"] - old_weather["temp"])
+        # Find the oldest weather for the date in weather_history
+        oldest_weather = None
+        for entry in weather_history:
+            if date in entry["weather"]:
+                oldest_weather = entry["weather"][date]
+                break  # Stop after finding the first (oldest) entry
+
+        if oldest_weather:
+            temp_diff = round(new_weather["temp"] - oldest_weather["temp"])
             trends[date] = {
                 "temp_diff": temp_diff,
                 "trend": "up" if temp_diff > 0 else "down" if temp_diff < 0 else "same"
@@ -91,6 +115,9 @@ def index():
 
     # Append the new data and trends to the history
     weather_history.append({"weather": new_data, "trends": trends})
+
+    # Save the updated weather history
+    save_weather_history()
 
     return render_template("index.html", weather=new_data, trends=trends, history=weather_history, 
                            location=location, start_date=start_date, end_date=end_date, chart_data_url="/chart-data")
