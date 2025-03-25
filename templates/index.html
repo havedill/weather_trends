@@ -46,7 +46,7 @@
             <ul>
                 {% for date, weather in weather.items() %}
                 <li>
-                    <strong>{{ date }}</strong>: {{ weather.temp }}°F, {{ weather.condition }}
+                    <strong>{{ date }}</strong>: {{ weather.temp }}°F / {{ weather.condition }} Precipitation
                 </li>
                 {% endfor %}
             </ul>
@@ -106,11 +106,19 @@
                 .then(data => {
                     console.log("Chart data:", data); // Debugging
                     const labels = data.map(entry => entry.date);
-                    const datasets = data.map(entry => ({
-                        label: `${entry.date}`,
+                    const tempDatasets = data.map(entry => ({
+                        label: `${entry.date} Temperature`,
                         data: entry.previous_temps,
                         fill: false,
                         borderColor: getRandomColor(),
+                        tension: 0.1
+                    }));
+                    const precipDatasets = data.map(entry => ({
+                        label: `${entry.date} Precipitation`,
+                        data: entry.previous_precipitation, // Numeric precipitation values
+                        fill: false,
+                        borderColor: getRandomColor(),
+                        borderDash: [5, 5], // Dashed line for precipitation
                         tension: 0.1
                     }));
 
@@ -118,7 +126,7 @@
                         type: "line",
                         data: {
                             labels: Array.from({ length: 20 }, (_, i) => `T-${19 - i}`), // Labels for the last 20 values
-                            datasets: datasets
+                            datasets: [...tempDatasets, ...precipDatasets] // Combine temperature and precipitation datasets
                         },
                         options: {
                             responsive: true,
@@ -127,14 +135,13 @@
                                     display: true
                                 },
                                 datalabels: {
-                                    align: 'end', // Align labels at the end of the line
-                                    anchor: 'end', // Anchor labels to the end of the data point
-                                    // formatter: (value, context) => {
-                                    //     const datasetLabel = context.dataset.label; // Get the dataset label
-                                    //     return `${datasetLabel}\n\t${value}°F`; // Combine the label with the value
-                                    // },
+                                    align: 'end',
+                                    anchor: 'end',
                                     formatter: (value, context) => {
-                                        return `${value}°F`; // Combine the label with the value
+                                        if (`${context.dataset.label}`.includes("Precipitation")) {
+                                            return `${value}%`; // Format precipitation values
+                                        }
+                                        return `${value}°F`; // Format temperature values
                                     },
                                     font: {
                                         size: 10
@@ -145,13 +152,13 @@
                                 x: {
                                     title: {
                                         display: true,
-                                        text: 'Last 20 Recorded Temperatures'
+                                        text: 'Last 20 Recorded Data Points'
                                     }
                                 },
                                 y: {
                                     title: {
                                         display: true,
-                                        text: 'Temperature (°F)'
+                                        text: 'Value (°F / % Precipitation)'
                                     }
                                 }
                             }

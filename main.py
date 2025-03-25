@@ -79,23 +79,32 @@ def chart_data():
     chart_data = []
     for date in weather_cache:
         previous_temps = []
+        previous_precipitation = []
         latest_temp = None
+        latest_precipitation = None
 
-        # Collect the last 20 temperature values for the date
+        # Collect the last 20 temperature and precipitation values for the date
         for entry in reversed(weather_history):  # Reverse to get the most recent entries first
             if date in entry["weather"]:
                 previous_temps.append(entry["weather"][date]["temp"])
+                # Convert precipitation percentage string (e.g., "31%") to a numeric value
+                precipitation_value = float(entry["weather"][date]["condition"].strip('%'))
+                previous_precipitation.append(precipitation_value)
                 if len(previous_temps) == 20:  # Limit to the last 20 values
                     break
 
-        # Get the latest temperature for the date
+        # Get the latest temperature and precipitation for the date
         if previous_temps:
             latest_temp = previous_temps[0]
+        if previous_precipitation:
+            latest_precipitation = previous_precipitation[0]
 
         chart_data.append({
             "date": date,
             "previous_temps": previous_temps[::-1],  # Reverse to maintain chronological order
-            "latest_temp": latest_temp
+            "previous_precipitation": previous_precipitation[::-1],  # Reverse for chronological order
+            "latest_temp": latest_temp,
+            "latest_precipitation": latest_precipitation
         })
     print(chart_data)
     return jsonify(chart_data)
