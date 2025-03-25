@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Trends</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <style>
+        #update-timer {
+            margin-top: 10px;
+            font-size: 1.2em;
+            color: #555;
+            text-align: center;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Include Chart.js -->
+</head>
+<body>
+    <header>
+        <h1>Weather Trends</h1>
+    </header>
+    <main>
+        <form method="GET" action="/">
+            <label for="location">Select Location:</label>
+            <select id="location" name="location">
+                <option value="42.9289,-88.8371" {% if location == "42.9289,-88.8371" %}selected{% endif %}>Fort Atkinson, WI</option>
+                <option value="41.9837,-87.6601" {% if location == "41.9837,-87.6601" %}selected{% endif %}>Edgewater, Chicago</option>
+            </select>
+            <label for="start_date">Start Date:</label>
+            <input type="date" id="start_date" name="start_date" value="{{ start_date }}">
+            <label for="end_date">End Date:</label>
+            <input type="date" id="end_date" name="end_date" value="{{ end_date }}">
+            <label for="refresh_timer">Refresh Timer:</label>
+            <select id="refresh_timer">
+                <option value="0">Off</option>
+                <option value="1">1 Minute</option>
+                <option value="5">5 Minutes</option>
+                <option value="10">10 Minutes</option>
+            </select>
+            <button type="submit">Update</button>
+        </form>
+        <section class="current-weather">
+            <h2>Current Weather (April 2-6, 2025)</h2>
+            <ul>
+                {% for date, weather in weather.items() %}
+                <li>
+                    <strong>{{ date }}</strong>: {{ weather.temp }}°F, {{ weather.condition }}
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+        <section class="trends">
+            <h2>Weather Trends</h2>
+            <ul>
+                {% for date, trend in trends.items() %}
+                <li>
+                    <strong>{{ date }}</strong>: {% if trend.trend == "up" %}🔼{% elif trend.trend == "down" %}🔽{% else %}➡️{% endif %} 
+                    ({{ trend.temp_diff }}°F)
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+        <div>
+            <h2>Historical Weather Data</h2>
+            <canvas id="weatherChart"></canvas> <!-- Add a canvas for the chart -->
+        </div>
+    </main>
+    <footer>
+    </footer>
+    <script>
+        const refreshTimerDropdown = document.getElementById('refresh_timer');
+        let refreshInterval;
+
+        // Load saved refresh timer value from localStorage
+        const savedRefreshValue = localStorage.getItem('refresh_timer');
+        if (savedRefreshValue) {
+            refreshTimerDropdown.value = savedRefreshValue;
+            setRefreshInterval(parseInt(savedRefreshValue, 10));
+        }
+
+        refreshTimerDropdown.addEventListener('change', () => {
+            const selectedValue = parseInt(refreshTimerDropdown.value, 10);
+            localStorage.setItem('refresh_timer', selectedValue); // Save to localStorage
+            setRefreshInterval(selectedValue);
+        });
+
+        function setRefreshInterval(minutes) {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+            if (minutes > 0) {
+                refreshInterval = setInterval(() => {
+                    window.location.reload();
+                }, minutes * 60 * 1000); // Convert minutes to milliseconds
+            }
+        }
+
+        // Update the timer display
+        let lastUpdated = 0;
+        const updateTimerElement = document.getElementById('update-timer');
+        setInterval(() => {
+            lastUpdated += 1;
+            updateTimerElement.textContent = `Last updated: ${lastUpdated} seconds ago`;
+        }, 1000);
+
+        // Fetch chart data from the backend
+        document.addEventListener("DOMContentLoaded", function () {
+            console.log("DOM fully loaded and parsed");
+            const ctx = document.getElementById("weatherChart").getContext("2d");
+            fetch("/chart-data")
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Chart data:", data); // Debugging
+                    const labels = data.map(entry => entry.date);
+                    const previousTemps = data.map(entry => entry.previous_temp);
+                    const latestTemps = data.map(entry => entry.latest_temp);
+
+                    new Chart(ctx, {
+                        type: "line",
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                {
+                                    label: "Previous Temperature",
+                                    data: previousTemps,
+                                    borderColor: "blue",
+                                    fill: false
+                                },
+                                {
+                                    label: "Latest Temperature",
+                                    data: latestTemps,
+                                    borderColor: "red",
+                                    fill: false
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: {
+                                    position: "top"
+                                }
+                            }
+                        }
+                    });
+                })
+                .catch(error => console.error("Error fetching chart data:", error));
+        });
+    </script>
+
+    <!-- Update timer -->
+    <div id="update-timer">Last updated: 0 seconds ago</div>
+</body>
+</html>
