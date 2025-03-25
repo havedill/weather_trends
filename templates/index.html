@@ -63,10 +63,11 @@
         </section>
         <div>
             <h2>Historical Weather Data</h2>
-            <canvas id="weatherChart"></canvas> <!-- Add a canvas for the chart -->
+            <canvas id="weatherChart" width="800" height="400"></canvas> <!-- Add a canvas for the chart -->
         </div>
     </main>
     <footer>
+        <div id="update-timer">Last updated</div>
     </footer>
     <script>
         const refreshTimerDropdown = document.getElementById('refresh_timer');
@@ -95,51 +96,48 @@
                 }, minutes * 60 * 1000); // Convert minutes to milliseconds
             }
         }
-
-        // Update the timer display
-        let lastUpdated = 0;
-        const updateTimerElement = document.getElementById('update-timer');
-        setInterval(() => {
-            lastUpdated += 1;
-            updateTimerElement.textContent = `Last updated: ${lastUpdated} seconds ago`;
-        }, 1000);
-
         // Fetch chart data from the backend
         document.addEventListener("DOMContentLoaded", function () {
             console.log("DOM fully loaded and parsed");
             const ctx = document.getElementById("weatherChart").getContext("2d");
-            fetch("/chart-data")
+            fetch("{{ chart_data_url }}")
                 .then(response => response.json())
                 .then(data => {
                     console.log("Chart data:", data); // Debugging
                     const labels = data.map(entry => entry.date);
-                    const previousTemps = data.map(entry => entry.previous_temp);
-                    const latestTemps = data.map(entry => entry.latest_temp);
+                    const datasets = data.map(entry => ({
+                        label: `${entry.date}`,
+                        data: entry.previous_temps,
+                        fill: false,
+                        borderColor: getRandomColor(),
+                        tension: 0.1
+                    }));
 
                     new Chart(ctx, {
                         type: "line",
                         data: {
-                            labels: labels,
-                            datasets: [
-                                {
-                                    label: "Previous Temperature",
-                                    data: previousTemps,
-                                    borderColor: "blue",
-                                    fill: false
-                                },
-                                {
-                                    label: "Latest Temperature",
-                                    data: latestTemps,
-                                    borderColor: "red",
-                                    fill: false
-                                }
-                            ]
+                            labels: Array.from({ length: 20 }, (_, i) => `T-${19 - i}`), // Labels for the last 20 values
+                            datasets: datasets
                         },
                         options: {
                             responsive: true,
                             plugins: {
                                 legend: {
-                                    position: "top"
+                                    display: true
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Last 20 Recorded Temperatures'
+                                    }
+                                },
+                                y: {
+                                    title: {
+                                        display: true,
+                                        text: 'Temperature (°F)'
+                                    }
                                 }
                             }
                         }
@@ -147,9 +145,22 @@
                 })
                 .catch(error => console.error("Error fetching chart data:", error));
         });
-    </script>
 
-    <!-- Update timer -->
-    <div id="update-timer">Last updated: 0 seconds ago</div>
+        // Helper function to generate random colors for the chart
+        function getRandomColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+    </script>
+<script>
+    // Update the timer display with the current timestamp
+    const updateTimerElement = document.getElementById('update-timer');
+    const lastUpdatedTime = new Date().toLocaleString(); // Get the current date and time
+    updateTimerElement.textContent = `Last updated: ${lastUpdatedTime}`;
+</script>
 </body>
 </html>

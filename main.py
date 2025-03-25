@@ -54,15 +54,23 @@ def chart_data():
     # Prepare historical data for chart rendering
     chart_data = []
     for date in weather_cache:
-        previous_temp = weather_cache[date]["temp"] if date in weather_cache else None
+        previous_temps = []
         latest_temp = None
-        for entry in weather_history:
+
+        # Collect the last 20 temperature values for the date
+        for entry in reversed(weather_history):  # Reverse to get the most recent entries first
             if date in entry["weather"]:
-                latest_temp = entry["weather"][date]["temp"]
-                break
+                previous_temps.append(entry["weather"][date]["temp"])
+                if len(previous_temps) == 20:  # Limit to the last 20 values
+                    break
+
+        # Get the latest temperature for the date
+        if previous_temps:
+            latest_temp = previous_temps[0]
+
         chart_data.append({
             "date": date,
-            "previous_temp": previous_temp,
+            "previous_temps": previous_temps[::-1],  # Reverse to maintain chronological order
             "latest_temp": latest_temp
         })
     print(chart_data)
