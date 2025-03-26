@@ -21,6 +21,9 @@ def load_weather_history():
 
 # Save weather history to file
 def save_weather_history():
+    global weather_history
+    if len(weather_history) > 20:
+        weather_history = weather_history[-20:]
     with open(WEATHER_HISTORY_FILE, "w") as file:
         json.dump(weather_history, file, indent=4)
 
@@ -119,14 +122,16 @@ def index():
 
     # Fetch weather data based on inputs
     new_data = scrape_weather(latitude, longitude, start_date, end_date)
+
+    # Check if new_data is different from the last cached data
     trends = calculate_trends(new_data)
-    weather_cache.update(new_data)
+    if not weather_cache or any(new_data[date] != weather_cache.get(date, {}) for date in new_data):
+        weather_cache.update(new_data)
+        weather_history.append({"weather": new_data })
+        # Save the updated weather history
+        save_weather_history()
+    
 
-    # Append the new data and trends to the history
-    weather_history.append({"weather": new_data, "trends": trends})
-
-    # Save the updated weather history
-    save_weather_history()
 
     return render_template("index.html", weather=new_data, trends=trends, history=weather_history, 
                            location=location, start_date=start_date, end_date=end_date, chart_data_url="/chart-data")
