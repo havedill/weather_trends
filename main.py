@@ -6,11 +6,9 @@ import os
 
 app = Flask(__name__, static_folder="static")
 
-# In-memory cache for weather data
-weather_cache = {}
-
 # File to store weather history
 WEATHER_HISTORY_FILE = "weather_history.json"
+CHART_HISTORY_LENGTH = 20
 
 # Load weather history from file
 def load_weather_history():
@@ -22,8 +20,8 @@ def load_weather_history():
 # Save weather history to file
 def save_weather_history():
     global weather_history
-    if len(weather_history) > 20:
-        weather_history = weather_history[-20:]
+    if len(weather_history) > CHART_HISTORY_LENGTH:
+        weather_history = weather_history[-CHART_HISTORY_LENGTH:]
     with open(WEATHER_HISTORY_FILE, "w") as file:
         json.dump(weather_history, file, indent=4)
 
@@ -78,39 +76,30 @@ def calculate_trends(new_data):
 
 @app.route("/chart-data")
 def chart_data():
-    # Prepare historical data for chart rendering
-    chart_data = []
-    for date in weather_cache:
-        previous_temps = []
-        previous_precipitation = []
-        latest_temp = None
-        latest_precipitation = None
+    chart_data = {}
+    for entry in weather_history:
+        for date, weather in entry["weather"].items():
+            if date not in chart_data:
+                chart_data[date] = {
+                    "previous_temps": [],
+                    "previous_precipitation": [],
+                }
+            chart_data[date]["previous_temps"].append(weather["temp"])
+            chart_data[date]["previous_precipitation"].append(float(weather["condition"].strip('%')))
 
-        # Collect the last 20 temperature and precipitation values for the date
-        for entry in reversed(weather_history):  # Reverse to get the most recent entries first
-            if date in entry["weather"]:
-                previous_temps.append(entry["weather"][date]["temp"])
-                # Convert precipitation percentage string (e.g., "31%") to a numeric value
-                precipitation_value = float(entry["weather"][date]["condition"].strip('%'))
-                previous_precipitation.append(precipitation_value)
-                if len(previous_temps) == 20:  # Limit to the last 20 values
-                    break
-
-        # Get the latest temperature and precipitation for the date
-        if previous_temps:
-            latest_temp = previous_temps[0]
-        if previous_precipitation:
-            latest_precipitation = previous_precipitation[0]
-
-        chart_data.append({
+    formatted_chart_data = []
+    for date, data in chart_data.items():
+        previous_temps = data["previous_temps"][-CHART_HISTORY_LENGTH:]
+        previous_precipitation = data["previous_precipitation"][-CHART_HISTORY_LENGTH:]
+        formatted_chart_data.append({
             "date": date,
-            "previous_temps": previous_temps[::-1],  # Reverse to maintain chronological order
-            "previous_precipitation": previous_precipitation[::-1],  # Reverse for chronological order
-            "latest_temp": latest_temp,
-            "latest_precipitation": latest_precipitation
+            "previous_temps": previous_temps,
+            "previous_precipitation": previous_precipitation,
+            "latest_temp": previous_temps[-1] if previous_temps else None,
+            "latest_precipitation": previous_precipitation[-1] if previous_precipitation else None
         })
-    #print(chart_data)
-    return jsonify(chart_data)
+
+    return jsonify(formatted_chart_data)
 
 @app.route("/")
 def index():
@@ -123,16 +112,14 @@ def index():
     # Fetch weather data based on inputs
     new_data = scrape_weather(latitude, longitude, start_date, end_date)
     
-    #print(f'NEW DATA: {new_data}')
-    # Check if new_data is different from the last cached data
+    # Calculate trends
     trends = calculate_trends(new_data)
-    if not weather_cache or any(new_data[date] != weather_cache[-1].get("weather", {}).get(date, {}) for date in new_data):
-        weather_cache.update(new_data)
-        weather_history.append({"weather": new_data })
+
+    # Check if new_data is different from the last cached data in weather_history
+    if not weather_history or any(new_data[date] != weather_history[-1].get("weather", {}).get(date, {}) for date in new_data):
+        weather_history.append({"weather": new_data})
         # Save the updated weather history
         save_weather_history()
-    
-
 
     return render_template("index.html", weather=new_data, trends=trends, history=weather_history, 
                            location=location, start_date=start_date, end_date=end_date, chart_data_url="/chart-data")
