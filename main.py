@@ -59,7 +59,7 @@ def scrape_weather(latitude, longitude, start_date, end_date):
 
 def calculate_trends(new_data):
     trends = {}
-    print(json.dumps(weather_history, indent=2))
+    #print(json.dumps(weather_history, indent=2))
     for date, new_weather in new_data.items():
         # Find the oldest weather for the date in weather_history
         oldest_weather = None
@@ -109,7 +109,7 @@ def chart_data():
             "latest_temp": latest_temp,
             "latest_precipitation": latest_precipitation
         })
-    print(chart_data)
+    #print(chart_data)
     return jsonify(chart_data)
 
 @app.route("/")
@@ -122,10 +122,11 @@ def index():
 
     # Fetch weather data based on inputs
     new_data = scrape_weather(latitude, longitude, start_date, end_date)
-
+    
+    #print(f'NEW DATA: {new_data}')
     # Check if new_data is different from the last cached data
     trends = calculate_trends(new_data)
-    if not weather_cache or any(new_data[date] != weather_cache.get(date, {}) for date in new_data):
+    if not weather_cache or any(new_data[date] != weather_cache[-1].get("weather", {}).get(date, {}) for date in new_data):
         weather_cache.update(new_data)
         weather_history.append({"weather": new_data })
         # Save the updated weather history
