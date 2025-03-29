@@ -21,6 +21,16 @@
         .weather-container > section {
             flex: 1;
         }
+        #chart-options-form {
+            display: inline-flex;
+            align-items: center; 
+            gap: 5px; 
+        }
+       
+        #weatherChart {
+            max-width: 1200px; 
+            max-height: 600px; 
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Include Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script> <!-- Include Chart.js Data Labels plugin -->
@@ -30,7 +40,7 @@
         <h1>Weather Trends</h1>
     </header>
     <main>
-        <form method="GET" action="/">
+        <form method="GET" action="/" id="location-form">
             <label for="location">Select Location:</label>
             <select id="location" name="location">
                 <option value="42.9289,-88.8371" {% if location == "42.9289,-88.8371" %}selected{% endif %}>Fort Atkinson, WI</option>
@@ -75,6 +85,15 @@
             <h2>Historical Weather Data</h2>
             <canvas id="weatherChart"></canvas>
         </div>
+        <form id="chart-options-form">
+            <label for="x_axis_length">X-Axis Length:</label>
+            <select id="x_axis_length">
+                <option value="5">5</option>
+                <option value="10" selected>10</option>
+                <option value="15">15</option>
+                <option value="20">20</option>
+            </select>
+        </form>
     </main>
     <footer>
         <div id="update-timer">Last updated</div>
@@ -111,6 +130,8 @@
         document.addEventListener("DOMContentLoaded", function () {
             console.log("DOM fully loaded and parsed");
             const ctx = document.getElementById("weatherChart").getContext("2d");
+            let chartInstance; // Store the chart instance for dynamic updates
+
             fetch("{{ chart_data_url }}")
                 .then(response => response.json())
                 .then(data => {
@@ -132,7 +153,7 @@
                         tension: 0.1
                     }));
 
-                    new Chart(ctx, {
+                    chartInstance = new Chart(ctx, {
                         type: "line",
                         data: {
                             labels: labels, // Use timestamps as labels
@@ -177,6 +198,90 @@
                     });
                 })
                 .catch(error => console.error("Error fetching chart data:", error));
+
+            const xAxisLengthDropdown = document.getElementById("x_axis_length");
+            xAxisLengthDropdown.addEventListener("change", () => {
+                const selectedLength = parseInt(xAxisLengthDropdown.value, 10);
+                updateChart(selectedLength);
+            });
+
+            function updateChart(xAxisLength) {
+                fetch("{{ chart_data_url }}")
+                    .then(response => response.json())
+                    .then(data => {
+                        const ctx = document.getElementById("weatherChart").getContext("2d");
+                        const labels = data[0].timestamps.slice(-xAxisLength); // Get the newest timestamps
+                        const tempDatasets = data.map(entry => ({
+                            label: `${entry.date} Temperature`,
+                            data: entry.previous_temps.slice(-xAxisLength), // Get the newest temperature values
+                            fill: false,
+                            borderColor: getRandomColor(),
+                            tension: 0.1
+                        }));
+                        const precipDatasets = data.map(entry => ({
+                            label: `${entry.date} Precipitation`,
+                            data: entry.previous_precipitation.slice(-xAxisLength), // Get the newest precipitation values
+                            fill: false,
+                            borderColor: getRandomColor(),
+                            borderDash: [5, 5],
+                            tension: 0.1
+                        }));
+
+                        // If a chart instance already exists, destroy it before creating a new one
+                        if (chartInstance) {
+                            chartInstance.destroy();
+                        }
+
+                        chartInstance = new Chart(ctx, {
+                            type: "line",
+                            data: {
+                                labels: labels,
+                                datasets: [...tempDatasets, ...precipDatasets]
+                            },
+                            options: {
+                                responsive: true, // Ensure the chart resizes properly
+                                maintainAspectRatio: true, // Ensure the chart maintains its aspect ratio
+                                plugins: {
+                                    legend: {
+                                        display: true
+                                    },
+                                    datalabels: {
+                                        align: 'end',
+                                        anchor: 'end',
+                                        formatter: (value, context) => {
+                                            if (`${context.dataset.label}`.includes("Precipitation")) {
+                                                return `${value}%`;
+                                            }
+                                            return `${value}°F`;
+                                        },
+                                        font: {
+                                            size: 10
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    x: {
+                                        title: {
+                                            display: true,
+                                            text: 'Timestamps'
+                                        }
+                                    },
+                                    y: {
+                                        title: {
+                                            display: true,
+                                            text: 'Value (°F / % Precipitation)'
+                                        }
+                                    }
+                                }
+                            },
+                            plugins: [ChartDataLabels]
+                        });
+                    })
+                    .catch(error => console.error("Error updating chart:", error));
+            }
+
+            // Initialize chart with default X-axis length
+            updateChart(parseInt(xAxisLengthDropdown.value, 10));
         });
 
         // Helper function to generate random colors for the chart
@@ -189,11 +294,11 @@
             return color;
         }
     </script>
-<script>
-    // Update the timer display with the current timestamp
-    const updateTimerElement = document.getElementById('update-timer');
-    const lastUpdatedTime = new Date().toLocaleString(); // Get the current date and time
-    updateTimerElement.textContent = `Last updated: ${lastUpdatedTime}`;
-</script>
+    <script>
+        // Update the timer display with the current timestamp
+        const updateTimerElement = document.getElementById('update-timer');
+        const lastUpdatedTime = new Date().toLocaleString(); // Get the current date and time
+        updateTimerElement.textContent = `Last updated: ${lastUpdatedTime}`;
+    </script>
 </body>
 </html>
