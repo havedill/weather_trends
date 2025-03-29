@@ -2,4 +2,9 @@
 Before a big trip I am always refreshing the weather forecast to see what to expect 10+ days out. However, as you know the weather is always changing that far into the forecast.
 
 This little app simply shows me over time how the weather forecast is changing, so I can tell if the weather is trending down or up. I did leverage AI for some of this, so please excuse any obvious errors. It works for what I was trying to achieve.
+
+# Configuration
+Cities are currently configured in the index.html with mappings to the latitude/longitiude
+The chart history will not update if there were no changes since the previous api request.
+
 ![image](https://github.com/user-attachments/assets/0b75c63f-fe9c-44fe-9f82-22ee44fa9744)
