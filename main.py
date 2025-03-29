@@ -3,6 +3,7 @@ import requests
 import json
 import pandas as pd  # Add pandas for data manipulation
 import os
+import datetime  # Add import for datetime
 
 app = Flask(__name__, static_folder="static")
 
@@ -22,6 +23,9 @@ def save_weather_history():
     global weather_history
     if len(weather_history) > CHART_HISTORY_LENGTH:
         weather_history = weather_history[-CHART_HISTORY_LENGTH:]
+    # Add a simplified timestamp to the latest entry
+    if weather_history:
+        weather_history[-1]["timestamp"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     with open(WEATHER_HISTORY_FILE, "w") as file:
         json.dump(weather_history, file, indent=4)
 
@@ -78,21 +82,26 @@ def calculate_trends(new_data):
 def chart_data():
     chart_data = {}
     for entry in weather_history:
+        timestamp = entry.get("timestamp", "Unknown")  # Use timestamp if available
         for date, weather in entry["weather"].items():
             if date not in chart_data:
                 chart_data[date] = {
+                    "timestamps": [],
                     "previous_temps": [],
                     "previous_precipitation": [],
                 }
+            chart_data[date]["timestamps"].append(timestamp)
             chart_data[date]["previous_temps"].append(weather["temp"])
             chart_data[date]["previous_precipitation"].append(float(weather["condition"].strip('%')))
 
     formatted_chart_data = []
     for date, data in chart_data.items():
+        timestamps = data["timestamps"][-CHART_HISTORY_LENGTH:]
         previous_temps = data["previous_temps"][-CHART_HISTORY_LENGTH:]
         previous_precipitation = data["previous_precipitation"][-CHART_HISTORY_LENGTH:]
         formatted_chart_data.append({
             "date": date,
+            "timestamps": timestamps,
             "previous_temps": previous_temps,
             "previous_precipitation": previous_precipitation,
             "latest_temp": previous_temps[-1] if previous_temps else None,
@@ -122,7 +131,7 @@ def index():
         save_weather_history()
 
     return render_template("index.html", weather=new_data, trends=trends, history=weather_history, 
-                           location=location, start_date=start_date, end_date=end_date, chart_data_url="/chart-data")
+                           location=location, start_date=start_date, end_date=end_date, chart_data_url="/chart-data", chart_history_length=CHART_HISTORY_LENGTH)
 
 if __name__ == "__main__":
     # Correct the parameter for specifying the host
