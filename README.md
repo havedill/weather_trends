@@ -5,6 +5,7 @@ This little app simply shows me over time how the weather forecast is changing, 
 
 # Configuration
 Cities are currently configured in the index.html with mappings to the latitude/longitiude
+
 The chart history will not update if there were no changes since the previous api request.
 
 ![image](https://github.com/user-attachments/assets/0b75c63f-fe9c-44fe-9f82-22ee44fa9744)
