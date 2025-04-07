@@ -6,31 +6,54 @@ import os
 import datetime  # Add import for datetime
 
 app = Flask(__name__, static_folder="static")
-
-# File to store weather history
-WEATHER_HISTORY_FILE = "weather_history.json"
 CHART_HISTORY_LENGTH = 20
 
-# Load weather history from file
-def load_weather_history():
-    if os.path.exists(WEATHER_HISTORY_FILE):
-        with open(WEATHER_HISTORY_FILE, "r") as file:
+# Add a function to load locations from a file
+LOCATIONS_FILE = "locations.json"
+
+def load_locations():
+    if os.path.exists(LOCATIONS_FILE):
+        with open(LOCATIONS_FILE, "r") as file:
             return json.load(file)
     return []
 
-# Save weather history to file
-def save_weather_history():
-    global weather_history
-    if len(weather_history) > CHART_HISTORY_LENGTH:
-        weather_history = weather_history[-CHART_HISTORY_LENGTH:]
-    # Add a simplified timestamp to the latest entry
-    if weather_history:
-        weather_history[-1]["timestamp"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    with open(WEATHER_HISTORY_FILE, "w") as file:
-        json.dump(weather_history, file, indent=4)
+# Load locations at the start of the application
+locations = load_locations()
 
-# List to store historical weather data and trends
-weather_history = load_weather_history()
+# Update save_weather_history to save city-specific weather history
+def save_weather_history(location, data):
+    city_file = os.path.join("data", f"{location.replace(',', '_')}.json")
+    os.makedirs("data", exist_ok=True)
+    
+    # Maintain CHART_HISTORY_LENGTH
+    if len(data) > CHART_HISTORY_LENGTH:
+        data = data[-CHART_HISTORY_LENGTH:]
+    
+    # Add a simplified timestamp to the latest entry
+    if data:
+        data[-1]["timestamp"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    
+    with open(city_file, "w") as file:
+        json.dump(data, file, indent=4)
+
+# Update load_weather_history to load city-specific weather history
+def load_weather_history(location):
+    city_file = os.path.join("data", f"{location.replace(',', '_')}.json")
+    if os.path.exists(city_file):
+        with open(city_file, "r") as file:
+            return json.load(file)
+    return []
+
+# Define weather_history dynamically by loading all city-specific histories
+def get_weather_history():
+    weather_history = []
+    data_dir = "data"
+    if os.path.exists(data_dir):
+        for file_name in os.listdir(data_dir):
+            if file_name.endswith(".json"):
+                location = file_name.replace("_", ",").replace(".json", "")
+                weather_history.extend(load_weather_history(location))
+    return weather_history
 
 def scrape_weather(latitude, longitude, start_date, end_date):
     # Fetch weather data from Open-Meteo API
@@ -61,7 +84,7 @@ def scrape_weather(latitude, longitude, start_date, end_date):
 
 def calculate_trends(new_data):
     trends = {}
-    #print(json.dumps(weather_history, indent=2))
+    weather_history = get_weather_history()  # Retrieve weather history dynamically
     for date, new_weather in new_data.items():
         # Find the oldest weather for the date in weather_history
         oldest_weather = None
@@ -81,6 +104,7 @@ def calculate_trends(new_data):
 @app.route("/chart-data")
 def chart_data():
     chart_data = {}
+    weather_history = get_weather_history()  # Retrieve weather history dynamically
     for entry in weather_history:
         timestamp = entry.get("timestamp", "Unknown")  # Use timestamp if available
         for date, weather in entry["weather"].items():
@@ -110,13 +134,35 @@ def chart_data():
 
     return jsonify(formatted_chart_data)
 
+# Dynamically calculate the current date
+current_date = datetime.datetime.now().strftime("%Y-%m-%d")
+
+# Use current_date for default start_date and end_date
+
+# Function to load city-specific weather history
+def load_city_weather_history(city_coordinates):
+    city_file = os.path.join("data", f"{city_coordinates.replace(',', '_')}.json")
+    if os.path.exists(city_file):
+        with open(city_file, "r") as file:
+            return json.load(file)
+    return []
+
+# Function to save city-specific weather history
+def save_city_weather_history(city_coordinates, data):
+    city_file = os.path.join("data", f"{city_coordinates.replace(',', '_')}.json")
+    os.makedirs("data", exist_ok=True)
+    with open(city_file, "w") as file:
+        json.dump(data, file, indent=4)
+
 @app.route("/")
 def index():
-    # Get location and date inputs from the form
     location = request.args.get("location", "42.9289,-88.8371")
-    start_date = request.args.get("start_date", "2025-04-02")
-    end_date = request.args.get("end_date", "2025-04-06")
+    start_date = request.args.get("start_date", current_date)
+    end_date = request.args.get("end_date", current_date)
     latitude, longitude = map(float, location.split(","))
+
+    # Load city-specific weather history
+    city_weather_history = load_weather_history(location)
 
     # Fetch weather data based on inputs
     new_data = scrape_weather(latitude, longitude, start_date, end_date)
@@ -124,14 +170,19 @@ def index():
     # Calculate trends
     trends = calculate_trends(new_data)
 
-    # Check if new_data is different from the last cached data in weather_history
-    if not weather_history or any(new_data[date] != weather_history[-1].get("weather", {}).get(date, {}) for date in new_data):
-        weather_history.append({"weather": new_data})
-        # Save the updated weather history
-        save_weather_history()
+    # Check if new_data is different from the last cached data in city_weather_history
+    if not city_weather_history or any(new_data[date] != city_weather_history[-1].get("weather", {}).get(date, {}) for date in new_data):
+        city_weather_history.append({"weather": new_data})
+        save_weather_history(location, city_weather_history)
 
-    return render_template("index.html", weather=new_data, trends=trends, history=weather_history, 
-                           location=location, start_date=start_date, end_date=end_date, chart_data_url="/chart-data", chart_history_length=CHART_HISTORY_LENGTH)
+    # Adjust locations to be a list of dictionaries for template rendering
+    locations_list = [{"coordinates": key, "name": value} for key, value in locations.items()]
+
+    # Pass the adjusted locations list to the template
+    return render_template("index.html", weather=new_data, trends=trends, history=city_weather_history, 
+                           location=location, start_date=start_date, end_date=end_date, 
+                           chart_data_url="/chart-data", chart_history_length=CHART_HISTORY_LENGTH, 
+                           locations=locations_list)
 
 if __name__ == "__main__":
     # Correct the parameter for specifying the host

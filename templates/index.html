@@ -43,8 +43,9 @@
         <form method="GET" action="/" id="location-form">
             <label for="location">Select Location:</label>
             <select id="location" name="location">
-                <option value="42.9289,-88.8371" {% if location == "42.9289,-88.8371" %}selected{% endif %}>Fort Atkinson, WI</option>
-                <option value="41.9837,-87.6601" {% if location == "41.9837,-87.6601" %}selected{% endif %}>Edgewater, Chicago</option>
+                {% for loc in locations %}
+                <option value="{{ loc.coordinates }}" {% if location == loc.coordinates %}selected{% endif %}>{{ loc.name }}</option>
+                {% endfor %}
             </select>
             <label for="start_date">Start Date:</label>
             <input type="date" id="start_date" name="start_date" value="{{ start_date }}">
@@ -61,7 +62,7 @@
         </form>
         <div class="weather-container">
             <section class="current-weather">
-                <h2>Current Weather Forecast (April 2-6, 2025)</h2>
+                <h2>Current Weather Forecast ({{ start_date }} - {{ end_date }})</h2>
                 <ul>
                     {% for date, weather in weather.items() %}
                     <li>
@@ -299,6 +300,65 @@
         const updateTimerElement = document.getElementById('update-timer');
         const lastUpdatedTime = new Date().toLocaleString(); // Get the current date and time
         updateTimerElement.textContent = `Last updated: ${lastUpdatedTime}`;
+    </script>
+    <script>
+        // Fetch chart data dynamically for the selected city
+        document.addEventListener("DOMContentLoaded", function () {
+            const ctx = document.getElementById("weatherChart").getContext("2d");
+            let chartInstance;
+
+            function fetchAndRenderChart() {
+                fetch("{{ chart_data_url }}?location={{ location }}")
+                    .then(response => response.json())
+                    .then(data => {
+                        const labels = data[0].timestamps;
+                        const tempDatasets = data.map(entry => ({
+                            label: `${entry.date} Temperature`,
+                            data: entry.previous_temps,
+                            fill: false,
+                            borderColor: getRandomColor(),
+                            tension: 0.1
+                        }));
+
+                        if (chartInstance) {
+                            chartInstance.destroy();
+                        }
+
+                        chartInstance = new Chart(ctx, {
+                            type: "line",
+                            data: {
+                                labels: labels,
+                                datasets: tempDatasets
+                            },
+                            options: {
+                                responsive: true,
+                                plugins: {
+                                    legend: {
+                                        display: true
+                                    }
+                                },
+                                scales: {
+                                    x: {
+                                        title: {
+                                            display: true,
+                                            text: 'Timestamps'
+                                        }
+                                    },
+                                    y: {
+                                        title: {
+                                            display: true,
+                                            text: 'Temperature (°F)'
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    })
+                    .catch(error => console.error("Error fetching chart data:", error));
+            }
+
+            fetchAndRenderChart();
+        });
     </script>
 </body>
 </html>
