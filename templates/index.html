@@ -5,300 +5,405 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Weather Trends</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-    <style>
-        #update-timer {
-            margin-top: 10px;
-            font-size: 1.2em;
-            color: #555;
-            text-align: center;
-        }
-        .weather-container {
-            display: flex;
-            justify-content: space-between;
-            gap: 20px;
-        }
-        .weather-container > section {
-            flex: 1;
-        }
-        #chart-options-form {
-            display: inline-flex;
-            align-items: center; 
-            gap: 5px; 
-        }
-       
-        #weatherChart {
-            max-width: 1200px; 
-            max-height: 600px; 
-        }
-    </style>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Include Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script> <!-- Include Chart.js Data Labels plugin -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body>
+
+<div class="loading-overlay hidden" id="loader">
+    <div class="spinner"></div>
+</div>
+
+<div class="app-container">
     <header>
         <h1>Weather Trends</h1>
+        <p>Track how forecasts shift over time</p>
     </header>
-    <main>
-        <form method="GET" action="/" id="location-form">
-            <label for="location">Select Location:</label>
-            <select id="location" name="location">
-                <option value="42.9289,-88.8371" {% if location == "42.9289,-88.8371" %}selected{% endif %}>Fort Atkinson, WI</option>
-                <option value="41.9837,-87.6601" {% if location == "41.9837,-87.6601" %}selected{% endif %}>Edgewater, Chicago</option>
-            </select>
-            <label for="start_date">Start Date:</label>
-            <input type="date" id="start_date" name="start_date" value="{{ start_date }}">
-            <label for="end_date">End Date:</label>
-            <input type="date" id="end_date" name="end_date" value="{{ end_date }}">
-            <label for="refresh_timer">Refresh Timer:</label>
-            <select id="refresh_timer">
+
+    <!-- ── Controls ── -->
+    <div class="controls glass">
+        <div class="control-group location-wrapper" style="flex:2">
+            <label for="location-input">Location</label>
+            <input type="text" id="location-input" placeholder="Search a city…" autocomplete="off">
+            <div class="location-results" id="location-results"></div>
+        </div>
+        <div class="control-group">
+            <label for="start-date">Start Date</label>
+            <input type="date" id="start-date">
+        </div>
+        <div class="control-group">
+            <label for="end-date">End Date</label>
+            <input type="date" id="end-date">
+        </div>
+        <div class="control-group" style="min-width:120px;flex:0">
+            <label for="refresh-interval">Auto-Refresh</label>
+            <select id="refresh-interval">
                 <option value="0">Off</option>
-                <option value="10">10 Minutes</option>
-                <option value="30">30 Minutes</option>
-                <option value="60">60 Minutes</option>
+                <option value="5">5 min</option>
+                <option value="10">10 min</option>
+                <option value="30">30 min</option>
+                <option value="60">60 min</option>
             </select>
-            <button type="submit">Update</button>
-        </form>
-        <div class="weather-container">
-            <section class="current-weather">
-                <h2>Current Weather Forecast (April 2-6, 2025)</h2>
-                <ul>
-                    {% for date, weather in weather.items() %}
-                    <li>
-                        <strong>{{ date }}</strong>: {{ weather.temp }}°F / {{ weather.condition }} Precipitation
-                    </li>
-                    {% endfor %}
-                </ul>
-            </section>
-            <section class="trends">
-                <h2>Weather Trends</h2>
-                <ul>
-                    {% for date, trend in trends.items() %}
-                    <li>
-                        <strong>{{ date }}</strong>: {% if trend.trend == "up" %}🔼 +{% elif trend.trend == "down" %}🔽 {% else %}➡️{% endif %}{{ trend.temp_diff }}°F
-                    </li>
-                    {% endfor %}
-                </ul>
-            </section>
         </div>
-        <div>
-            <h2>Historical Weather Data</h2>
-            <canvas id="weatherChart"></canvas>
-        </div>
-        <form id="chart-options-form">
-            <label for="x_axis_length">X-Axis Length:</label>
-            <select id="x_axis_length">
-                <option value="5">5</option>
-                <option value="10" selected>10</option>
-                <option value="15">15</option>
-                <option value="20">20</option>
-            </select>
-        </form>
-    </main>
-    <footer>
-        <div id="update-timer">Last updated</div>
-    </footer>
-    <script>
-        const chartHistoryLength = {{ chart_history_length }}; 
-        const refreshTimerDropdown = document.getElementById('refresh_timer');
-        let refreshInterval;
+        <button class="btn" id="fetch-btn">Fetch</button>
+    </div>
 
-        // Load saved refresh timer value from localStorage
-        const savedRefreshValue = localStorage.getItem('refresh_timer');
-        if (savedRefreshValue) {
-            refreshTimerDropdown.value = savedRefreshValue;
-            setRefreshInterval(parseInt(savedRefreshValue, 10));
+    <!-- ── Dashboard ── -->
+    <div class="dashboard-grid" id="dashboard" style="display:none">
+        <div class="forecast-panel glass">
+            <div class="section-title">Current Forecast</div>
+            <div class="forecast-cards" id="forecast-cards"></div>
+        </div>
+        <div class="trend-panel glass">
+            <div class="section-title">Forecast Trend <span style="font-size:0.65rem;color:var(--text-dim);text-transform:none;letter-spacing:0">(vs first snapshot)</span></div>
+            <div class="trend-cards" id="trend-cards"></div>
+        </div>
+    </div>
+
+    <!-- ── Charts ── -->
+    <div class="chart-section glass" id="chart-section" style="display:none">
+        <div class="chart-header">
+            <div class="section-title" style="margin-bottom:0">Historical Forecast Changes</div>
+            <div class="chart-controls">
+                <select id="chart-mode">
+                    <option value="temp">Temperature</option>
+                    <option value="precip">Precipitation %</option>
+                </select>
+            </div>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="trendChart"></canvas>
+        </div>
+    </div>
+
+    <!-- ── Status Bar ── -->
+    <div class="status-bar glass">
+        <div id="status-text"><span class="status-dot"></span>Ready</div>
+        <div id="countdown"></div>
+    </div>
+</div>
+
+<script>
+(function () {
+    // ── State ──
+    let selectedLocation = null;
+    let chartInstance = null;
+    let refreshTimer = null;
+    let countdownTimer = null;
+    let countdownSeconds = 0;
+    let lastData = null;
+
+    // ── Elements ──
+    const locationInput = document.getElementById('location-input');
+    const locationResults = document.getElementById('location-results');
+    const startDateInput = document.getElementById('start-date');
+    const endDateInput = document.getElementById('end-date');
+    const refreshSelect = document.getElementById('refresh-interval');
+    const fetchBtn = document.getElementById('fetch-btn');
+    const loader = document.getElementById('loader');
+    const dashboard = document.getElementById('dashboard');
+    const chartSection = document.getElementById('chart-section');
+    const forecastCards = document.getElementById('forecast-cards');
+    const trendCards = document.getElementById('trend-cards');
+    const chartMode = document.getElementById('chart-mode');
+    const statusText = document.getElementById('status-text');
+    const countdownEl = document.getElementById('countdown');
+
+    // ── Init defaults ──
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const futureDate = new Date(today);
+    futureDate.setDate(today.getDate() + 6);
+    const futureStr = futureDate.toISOString().slice(0, 10);
+    startDateInput.value = todayStr;
+    endDateInput.value = futureStr;
+
+    // Restore saved state
+    const saved = JSON.parse(localStorage.getItem('wt_state') || 'null');
+    if (saved) {
+        if (saved.location) {
+            selectedLocation = saved.location;
+            locationInput.value = saved.location.label;
+        }
+        if (saved.startDate) startDateInput.value = saved.startDate;
+        if (saved.endDate) endDateInput.value = saved.endDate;
+        if (saved.refresh) refreshSelect.value = saved.refresh;
+    }
+
+    function saveState() {
+        localStorage.setItem('wt_state', JSON.stringify({
+            location: selectedLocation,
+            startDate: startDateInput.value,
+            endDate: endDateInput.value,
+            refresh: refreshSelect.value,
+        }));
+    }
+
+    // ── Weather code to icon ──
+    function weatherIcon(code) {
+        if (code === 0) return '☀️';
+        if (code <= 3) return '⛅';
+        if (code <= 48) return '🌫️';
+        if (code <= 57) return '🌦️';
+        if (code <= 67) return '🌧️';
+        if (code <= 77) return '🌨️';
+        if (code <= 82) return '🌧️';
+        if (code <= 86) return '❄️';
+        if (code <= 99) return '⛈️';
+        return '🌡️';
+    }
+
+    function formatDate(dateStr) {
+        const d = new Date(dateStr + 'T12:00:00');
+        return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+
+    // ── Location Search ──
+    let searchTimeout = null;
+    locationInput.addEventListener('input', function () {
+        clearTimeout(searchTimeout);
+        const q = this.value.trim();
+        if (q.length < 2) {
+            locationResults.classList.remove('visible');
+            return;
+        }
+        searchTimeout = setTimeout(async () => {
+            try {
+                const resp = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+                const results = await resp.json();
+                if (results.length === 0) {
+                    locationResults.classList.remove('visible');
+                    return;
+                }
+                locationResults.innerHTML = results.map((r, i) =>
+                    `<div class="location-result" data-idx="${i}">${r.label}</div>`
+                ).join('');
+                locationResults._data = results;
+                locationResults.classList.add('visible');
+            } catch (e) {
+                locationResults.classList.remove('visible');
+            }
+        }, 300);
+    });
+
+    locationResults.addEventListener('click', function (e) {
+        const el = e.target.closest('.location-result');
+        if (!el) return;
+        const idx = parseInt(el.dataset.idx);
+        const loc = this._data[idx];
+        selectedLocation = loc;
+        locationInput.value = loc.label;
+        locationResults.classList.remove('visible');
+        saveState();
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('.location-wrapper')) {
+            locationResults.classList.remove('visible');
+        }
+    });
+
+    // ── Fetch Forecast ──
+    fetchBtn.addEventListener('click', fetchForecast);
+
+    async function fetchForecast() {
+        if (!selectedLocation) {
+            statusText.innerHTML = '<span class="status-dot" style="background:var(--red);box-shadow:0 0 6px var(--red)"></span>Select a location first';
+            return;
         }
 
-        refreshTimerDropdown.addEventListener('change', () => {
-            const selectedValue = parseInt(refreshTimerDropdown.value, 10);
-            localStorage.setItem('refresh_timer', selectedValue); // Save to localStorage
-            setRefreshInterval(selectedValue);
-        });
+        saveState();
+        loader.classList.remove('hidden');
+        fetchBtn.disabled = true;
+        statusText.innerHTML = '<span class="status-dot"></span>Fetching…';
 
-        function setRefreshInterval(minutes) {
-            if (refreshInterval) {
-                clearInterval(refreshInterval);
-            }
-            if (minutes > 0) {
-                refreshInterval = setInterval(() => {
-                    window.location.reload();
-                }, minutes * 60 * 1000); // Convert minutes to milliseconds
-            }
-        }
-        // Fetch chart data from the backend
-        document.addEventListener("DOMContentLoaded", function () {
-            console.log("DOM fully loaded and parsed");
-            const ctx = document.getElementById("weatherChart").getContext("2d");
-            let chartInstance; // Store the chart instance for dynamic updates
-
-            fetch("{{ chart_data_url }}")
-                .then(response => response.json())
-                .then(data => {
-                    console.log("Chart data:", data); // Debugging
-                    const labels = data[0].timestamps; // Use timestamps for x-axis labels
-                    const tempDatasets = data.map(entry => ({
-                        label: `${entry.date} Temperature`,
-                        data: entry.previous_temps,
-                        fill: false,
-                        borderColor: getRandomColor(),
-                        tension: 0.1
-                    }));
-                    const precipDatasets = data.map(entry => ({
-                        label: `${entry.date} Precipitation`,
-                        data: entry.previous_precipitation, // Numeric precipitation values
-                        fill: false,
-                        borderColor: getRandomColor(),
-                        borderDash: [5, 5], // Dashed line for precipitation
-                        tension: 0.1
-                    }));
-
-                    chartInstance = new Chart(ctx, {
-                        type: "line",
-                        data: {
-                            labels: labels, // Use timestamps as labels
-                            datasets: [...tempDatasets, ...precipDatasets] // Combine temperature and precipitation datasets
-                        },
-                        options: {
-                            responsive: false,
-                            plugins: {
-                                legend: {
-                                    display: true
-                                },
-                                datalabels: {
-                                    align: 'end',
-                                    anchor: 'end',
-                                    formatter: (value, context) => {
-                                        if (`${context.dataset.label}`.includes("Precipitation")) {
-                                            return `${value}%`; // Format precipitation values
-                                        }
-                                        return `${value}°F`; // Format temperature values
-                                    },
-                                    font: {
-                                        size: 10
-                                    }
-                                }
-                            },
-                            scales: {
-                                x: {
-                                    title: {
-                                        display: true,
-                                        text: 'Timestamps'
-                                    }
-                                },
-                                y: {
-                                    title: {
-                                        display: true,
-                                        text: 'Value (°,F / % Precipitation)'
-                                    }
-                                }
-                            }
-                        },
-                        plugins: [ChartDataLabels] // Register the datalabels plugin
-                    });
-                })
-                .catch(error => console.error("Error fetching chart data:", error));
-
-            const xAxisLengthDropdown = document.getElementById("x_axis_length");
-            xAxisLengthDropdown.addEventListener("change", () => {
-                const selectedLength = parseInt(xAxisLengthDropdown.value, 10);
-                updateChart(selectedLength);
+        try {
+            const params = new URLSearchParams({
+                lat: selectedLocation.latitude,
+                lon: selectedLocation.longitude,
+                start_date: startDateInput.value,
+                end_date: endDateInput.value,
+                location_name: selectedLocation.label,
             });
-
-            function updateChart(xAxisLength) {
-                fetch("{{ chart_data_url }}")
-                    .then(response => response.json())
-                    .then(data => {
-                        const ctx = document.getElementById("weatherChart").getContext("2d");
-                        const labels = data[0].timestamps.slice(-xAxisLength); // Get the newest timestamps
-                        const tempDatasets = data.map(entry => ({
-                            label: `${entry.date} Temperature`,
-                            data: entry.previous_temps.slice(-xAxisLength), // Get the newest temperature values
-                            fill: false,
-                            borderColor: getRandomColor(),
-                            tension: 0.1
-                        }));
-                        const precipDatasets = data.map(entry => ({
-                            label: `${entry.date} Precipitation`,
-                            data: entry.previous_precipitation.slice(-xAxisLength), // Get the newest precipitation values
-                            fill: false,
-                            borderColor: getRandomColor(),
-                            borderDash: [5, 5],
-                            tension: 0.1
-                        }));
-
-                        // If a chart instance already exists, destroy it before creating a new one
-                        if (chartInstance) {
-                            chartInstance.destroy();
-                        }
-
-                        chartInstance = new Chart(ctx, {
-                            type: "line",
-                            data: {
-                                labels: labels,
-                                datasets: [...tempDatasets, ...precipDatasets]
-                            },
-                            options: {
-                                responsive: true, // Ensure the chart resizes properly
-                                maintainAspectRatio: true, // Ensure the chart maintains its aspect ratio
-                                plugins: {
-                                    legend: {
-                                        display: true
-                                    },
-                                    datalabels: {
-                                        align: 'end',
-                                        anchor: 'end',
-                                        formatter: (value, context) => {
-                                            if (`${context.dataset.label}`.includes("Precipitation")) {
-                                                return `${value}%`;
-                                            }
-                                            return `${value}°F`;
-                                        },
-                                        font: {
-                                            size: 10
-                                        }
-                                    }
-                                },
-                                scales: {
-                                    x: {
-                                        title: {
-                                            display: true,
-                                            text: 'Timestamps'
-                                        }
-                                    },
-                                    y: {
-                                        title: {
-                                            display: true,
-                                            text: 'Value (°F / % Precipitation)'
-                                        }
-                                    }
-                                }
-                            },
-                            plugins: [ChartDataLabels]
-                        });
-                    })
-                    .catch(error => console.error("Error updating chart:", error));
-            }
-
-            // Initialize chart with default X-axis length
-            updateChart(parseInt(xAxisLengthDropdown.value, 10));
-        });
-
-        // Helper function to generate random colors for the chart
-        function getRandomColor() {
-            const letters = '0123456789ABCDEF';
-            let color = '#';
-            for (let i = 0; i < 6; i++) {
-                color += letters[Math.floor(Math.random() * 16)];
-            }
-            return color;
+            const resp = await fetch(`/api/forecast?${params}`);
+            if (!resp.ok) throw new Error('Fetch failed');
+            const data = await resp.json();
+            lastData = data;
+            renderDashboard(data);
+            renderChart(data);
+            statusText.innerHTML = `<span class="status-dot"></span>Updated ${data.fetched_at} · ${data.snapshot_count} snapshot(s)`;
+        } catch (err) {
+            statusText.innerHTML = `<span class="status-dot" style="background:var(--red);box-shadow:0 0 6px var(--red)"></span>Error: ${err.message}`;
+        } finally {
+            loader.classList.add('hidden');
+            fetchBtn.disabled = false;
         }
-    </script>
-    <script>
-        // Update the timer display with the current timestamp
-        const updateTimerElement = document.getElementById('update-timer');
-        const lastUpdatedTime = new Date().toLocaleString(); // Get the current date and time
-        updateTimerElement.textContent = `Last updated: ${lastUpdatedTime}`;
-    </script>
+
+        setupRefresh();
+    }
+
+    // ── Render Dashboard ──
+    function renderDashboard(data) {
+        dashboard.style.display = '';
+
+        // Forecast cards
+        forecastCards.innerHTML = data.forecast.map(day => `
+            <div class="forecast-card">
+                <span class="fc-date">${formatDate(day.date)}</span>
+                <span class="fc-icon">${weatherIcon(day.weather_code)}</span>
+                <span class="fc-temps">
+                    <span class="fc-high">${Math.round(day.temp_max)}°</span>
+                    <span class="fc-low">${Math.round(day.temp_min)}°</span>
+                </span>
+                <span class="fc-precip">💧 ${day.precip_chance}%</span>
+            </div>
+        `).join('');
+
+        // Trend cards
+        const trendDates = Object.keys(data.trends);
+        if (trendDates.length === 0) {
+            trendCards.innerHTML = '<div class="no-trend-msg">Need more snapshots to show trends. Fetch again later!</div>';
+        } else {
+            trendCards.innerHTML = trendDates.map(date => {
+                const t = data.trends[date];
+                const tempArrow = t.temp_trend === 'up' ? '▲' : t.temp_trend === 'down' ? '▼' : '—';
+                const tempSign = t.temp_diff > 0 ? '+' : '';
+                const precipArrow = t.precip_trend === 'up' ? '▲' : t.precip_trend === 'down' ? '▼' : '—';
+                const precipSign = t.precip_diff > 0 ? '+' : '';
+                return `
+                    <div class="trend-card">
+                        <span class="trend-date">${formatDate(date)}</span>
+                        <span class="trend-badge ${t.temp_trend}">${tempArrow} ${tempSign}${t.temp_diff}°F</span>
+                        <span class="trend-precip ${t.precip_trend}">${precipArrow} ${precipSign}${t.precip_diff}% rain</span>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    // ── Chart ──
+    const NEON_PALETTE = [
+        '#39ff14', '#00ffff', '#ff00ff', '#ffff00', '#ff6600',
+        '#00ff88', '#ff3366', '#66ffcc', '#cc99ff', '#ffcc00',
+    ];
+
+    function renderChart(data) {
+        const series = data.chart_series;
+        const dates = Object.keys(series);
+        if (dates.length === 0 || !series[dates[0]].timestamps.length) {
+            chartSection.style.display = 'none';
+            return;
+        }
+
+        chartSection.style.display = '';
+        const mode = chartMode.value;
+
+        const timestamps = series[dates[0]].timestamps;
+        const datasets = dates.map((date, i) => ({
+            label: formatDate(date),
+            data: mode === 'temp' ? series[date].temps : series[date].precips,
+            borderColor: NEON_PALETTE[i % NEON_PALETTE.length],
+            backgroundColor: NEON_PALETTE[i % NEON_PALETTE.length] + '22',
+            borderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            tension: 0.3,
+            fill: false,
+        }));
+
+        if (chartInstance) chartInstance.destroy();
+
+        const ctx = document.getElementById('trendChart').getContext('2d');
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: { labels: timestamps, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        labels: { color: '#e0e0e0', font: { size: 11 }, usePointStyle: true, pointStyle: 'circle' }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.85)',
+                        borderColor: '#39ff1444',
+                        borderWidth: 1,
+                        titleColor: '#39ff14',
+                        bodyColor: '#e0e0e0',
+                        callbacks: {
+                            label: ctx => {
+                                const suffix = mode === 'temp' ? '°F' : '%';
+                                return `${ctx.dataset.label}: ${ctx.parsed.y}${suffix}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Snapshot Time', color: '#888', font: { size: 11 } },
+                        ticks: { color: '#888', font: { size: 10 }, maxRotation: 45 },
+                        grid: { color: 'rgba(57,255,20,0.06)' }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: mode === 'temp' ? 'Temperature (°F)' : 'Precipitation Chance (%)',
+                            color: '#888',
+                            font: { size: 11 }
+                        },
+                        ticks: { color: '#888', font: { size: 10 } },
+                        grid: { color: 'rgba(57,255,20,0.06)' }
+                    }
+                }
+            }
+        });
+    }
+
+    chartMode.addEventListener('change', () => {
+        if (lastData) renderChart(lastData);
+    });
+
+    // ── Auto-Refresh ──
+    refreshSelect.addEventListener('change', () => {
+        saveState();
+        setupRefresh();
+    });
+
+    function setupRefresh() {
+        clearInterval(refreshTimer);
+        clearInterval(countdownTimer);
+        countdownEl.textContent = '';
+
+        const minutes = parseInt(refreshSelect.value, 10);
+        if (minutes <= 0) return;
+
+        countdownSeconds = minutes * 60;
+        updateCountdown();
+        countdownTimer = setInterval(() => {
+            countdownSeconds--;
+            if (countdownSeconds <= 0) countdownSeconds = minutes * 60;
+            updateCountdown();
+        }, 1000);
+
+        refreshTimer = setInterval(() => {
+            fetchForecast();
+        }, minutes * 60 * 1000);
+    }
+
+    function updateCountdown() {
+        const m = Math.floor(countdownSeconds / 60);
+        const s = countdownSeconds % 60;
+        countdownEl.innerHTML = `<span class="countdown">Next refresh ${m}:${s.toString().padStart(2, '0')}</span>`;
+    }
+
+    // ── Auto-fetch on load if state exists ──
+    if (selectedLocation) {
+        fetchForecast();
+    }
+})();
+</script>
+
 </body>
 </html>

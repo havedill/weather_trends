@@ -1,2 +1,6 @@
 .venv/
+__pycache__/
+*.pyc
 weather_history.json
+.env
+*.log
