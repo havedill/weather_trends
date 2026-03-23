@@ -7,8 +7,8 @@
 
 :root {
     --neon: #39ff14;
-    --neon-dim: #39ff1480;
-    --neon-glow: 0 0 10px #39ff1466, 0 0 40px #39ff1422;
+    --neon-dim: #39ff1455;
+    --neon-glow: 0 0 6px #39ff1430;
     --glass-bg: rgba(255, 255, 255, 0.04);
     --glass-border: rgba(57, 255, 20, 0.15);
     --glass-blur: 16px;
@@ -56,7 +56,7 @@ header h1 {
     font-size: 2rem;
     font-weight: 700;
     color: var(--neon);
-    text-shadow: 0 0 20px var(--neon-dim), 0 0 60px #39ff1433;
+    text-shadow: 0 0 10px var(--neon-dim);
     letter-spacing: 2px;
     text-transform: uppercase;
 }
@@ -108,7 +108,7 @@ header p {
 .control-group input:focus,
 .control-group select:focus {
     border-color: var(--neon);
-    box-shadow: 0 0 8px var(--neon-dim);
+    box-shadow: 0 0 4px var(--neon-dim);
 }
 
 .control-group select option {
@@ -132,7 +132,7 @@ header p {
 }
 
 .btn:hover {
-    box-shadow: 0 0 20px var(--neon-dim);
+    box-shadow: 0 0 10px var(--neon-dim);
     transform: translateY(-1px);
 }
 
@@ -412,7 +412,7 @@ header p {
     height: 8px;
     border-radius: 50%;
     background: var(--neon);
-    box-shadow: 0 0 6px var(--neon);
+    box-shadow: 0 0 3px var(--neon-dim);
     margin-right: 6px;
     animation: pulse 2s infinite;
 }
