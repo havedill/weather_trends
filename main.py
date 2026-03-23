@@ -94,6 +94,7 @@ def forecast():
                 "wind_speed_unit": "mph",
                 "temperature_unit": "fahrenheit",
                 "precipitation_unit": "inch",
+                "models": "gfs_seamless",
             },
             timeout=10,
         )
