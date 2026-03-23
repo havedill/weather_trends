@@ -159,30 +159,24 @@ def forecast():
     # Build location key for history filtering
     loc_key = f"{round(latitude, 2)},{round(longitude, 2)}"
 
-    # Check if data actually changed from last snapshot
+    # Filter history to matching location + date range
     loc_history = [
         h for h in weather_history
         if h.get("loc_key") == loc_key
         and h.get("start_date") == start_date
         and h.get("end_date") == end_date
     ]
-    should_save = True
-    if loc_history:
-        last = loc_history[-1]
-        if last.get("weather") == weather_snapshot:
-            should_save = False
 
-    if should_save:
-        entry = {
-            "timestamp": now,
-            "loc_key": loc_key,
-            "location_name": location_name,
-            "start_date": start_date,
-            "end_date": end_date,
-            "weather": weather_snapshot,
-        }
-        weather_history.append(entry)
-        weather_history = save_weather_history(weather_history)
+    entry = {
+        "timestamp": now,
+        "loc_key": loc_key,
+        "location_name": location_name,
+        "start_date": start_date,
+        "end_date": end_date,
+        "weather": weather_snapshot,
+    }
+    weather_history.append(entry)
+    weather_history = save_weather_history(weather_history)
 
     # Compute trends: compare current forecast to oldest snapshot for same query
     trends = {}
@@ -203,10 +197,7 @@ def forecast():
 
     # Build chart series: historical snapshots for each date
     chart_series = {}
-    for h in loc_history + ([{
-        "timestamp": now,
-        "weather": weather_snapshot,
-    }] if should_save else []):
+    for h in loc_history + [{"timestamp": now, "weather": weather_snapshot}]:
         ts = h["timestamp"]
         for date, w in h["weather"].items():
             if date not in chart_series:
@@ -219,7 +210,7 @@ def forecast():
         "forecast": forecast_days,
         "trends": trends,
         "chart_series": chart_series,
-        "snapshot_count": len(loc_history) + (1 if should_save else 0),
+        "snapshot_count": len(loc_history) + 1,
         "fetched_at": now,
     })
 
