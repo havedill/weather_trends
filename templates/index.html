@@ -47,6 +47,7 @@
             </select>
         </div>
         <button class="btn" id="fetch-btn">Fetch</button>
+        <button class="btn btn-danger" id="clear-btn" title="Delete all cached snapshots for this location">Clear Cache</button>
     </div>
 
     <!-- ── Dashboard ── -->
@@ -101,6 +102,7 @@
     const endDateInput = document.getElementById('end-date');
     const refreshSelect = document.getElementById('refresh-interval');
     const fetchBtn = document.getElementById('fetch-btn');
+    const clearBtn = document.getElementById('clear-btn');
     const loader = document.getElementById('loader');
     const dashboard = document.getElementById('dashboard');
     const chartSection = document.getElementById('chart-section');
@@ -201,6 +203,20 @@
     document.addEventListener('click', function (e) {
         if (!e.target.closest('.location-wrapper')) {
             locationResults.classList.remove('visible');
+        }
+    });
+
+    // ── Clear Cache ──
+    clearBtn.addEventListener('click', async () => {
+        if (!confirm('Delete all cached snapshots? This will reset trend history for all locations.')) return;
+        clearBtn.disabled = true;
+        try {
+            await fetch('/api/history', { method: 'DELETE' });
+            statusText.innerHTML = '<span class="status-dot"></span>Cache cleared';
+            dashboard.style.display = 'none';
+            chartSection.style.display = 'none';
+        } finally {
+            clearBtn.disabled = false;
         }
     });
 

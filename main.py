@@ -89,6 +89,15 @@ def geocode():
         return jsonify([])
 
 
+@app.route("/api/history", methods=["DELETE"])
+def clear_history():
+    """Delete all cached weather snapshots."""
+    global weather_history
+    weather_history = []
+    save_weather_history(weather_history)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/forecast")
 def forecast():
     """Fetch weather forecast and compute trends."""

@@ -136,6 +136,15 @@ header p {
     transform: translateY(-1px);
 }
 
+.btn-danger {
+    background: linear-gradient(135deg, #ff4444, #cc2222);
+    color: #fff;
+}
+
+.btn-danger:hover {
+    box-shadow: 0 0 10px rgba(255, 68, 68, 0.4);
+}
+
 .btn:active {
     transform: translateY(0);
 }
