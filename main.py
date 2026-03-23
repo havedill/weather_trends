@@ -3,6 +3,7 @@ import requests
 import json
 import os
 import datetime
+import argparse
 
 app = Flask(__name__, static_folder="static")
 
@@ -94,7 +95,7 @@ def forecast():
                 "wind_speed_unit": "mph",
                 "temperature_unit": "fahrenheit",
                 "precipitation_unit": "inch",
-                "models": "gfs_seamless",
+                "models": "ecmwf_ifs025",
             },
             timeout=10,
         )
@@ -194,4 +195,7 @@ def forecast():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=False)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=5000, help="Port to listen on")
+    args = parser.parse_args()
+    app.run(host="0.0.0.0", port=args.port, debug=False)
