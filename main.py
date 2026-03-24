@@ -11,24 +11,7 @@ WEATHER_HISTORY_FILE = "weather_history.json"
 
 
 def select_model(end_date_str):
-    """Choose the best Open-Meteo model based on how far out the forecast goes.
-
-    - ≤2 days:  best_match  (Open-Meteo picks highest-resolution available, e.g. HRRR)
-    - ≤7 days:  gfs_seamless (GFS — aligns with NWS / Weather Underground)
-    - >7 days:  ecmwf_ifs025 (ECMWF IFS — most accurate at medium/extended range)
-    """
-    try:
-        end = datetime.date.fromisoformat(end_date_str)
-        days_out = (end - datetime.date.today()).days
-    except ValueError:
-        return "best_match"
-
-    if days_out <= 2:
-        return "best_match"
-    elif days_out <= 7:
-        return "gfs_seamless"
-    else:
-        return "ecmwf_ifs025"
+    return "best_match"
 MAX_HISTORY_SNAPSHOTS = 50
 
 
