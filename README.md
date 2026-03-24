@@ -8,4 +8,5 @@ Cities are currently configured in the index.html with mappings to the latitude/
 
 The chart history will not update if there were no changes since the previous api request.
 
-![image](https://github.com/user-attachments/assets/0b75c63f-fe9c-44fe-9f82-22ee44fa9744)
+
+<img width="1077" height="1149" alt="wt2" src="https://github.com/user-attachments/assets/92a290e0-f202-423c-b1f5-5fcd1548426b" />
