@@ -248,7 +248,8 @@
             lastData = data;
             renderDashboard(data);
             renderChart(data);
-            const sourceLabel = data.source === 'nws' ? 'NWS' : 'Open-Meteo';
+            const sourceMap = { 'nws': 'NWS', 'open-meteo': 'Open-Meteo', 'nws+open-meteo': 'NWS + Open-Meteo' };
+            const sourceLabel = sourceMap[data.source] || data.source;
             statusText.innerHTML = `<span class="status-dot"></span>Updated ${data.fetched_at} · ${data.snapshot_count} snapshot(s) · Source: ${sourceLabel}`;
         } catch (err) {
             statusText.innerHTML = `<span class="status-dot" style="background:var(--red);box-shadow:0 0 6px var(--red)"></span>Error: ${err.message}`;
@@ -265,9 +266,13 @@
         dashboard.style.display = '';
 
         // Forecast cards
-        forecastCards.innerHTML = data.forecast.map(day => `
+        forecastCards.innerHTML = data.forecast.map(day => {
+            const srcLabel = day.source === 'nws' ? 'NWS' : 'Open-Meteo';
+            const srcClass = day.source === 'nws' ? 'source-nws' : 'source-om';
+            return `
             <div class="forecast-card">
                 <span class="fc-date">${formatDate(day.date)}</span>
+                <span class="fc-source ${srcClass}">${srcLabel}</span>
                 <span class="fc-icon">${weatherIcon(day.weather_code)}</span>
                 <span class="fc-temps">
                     <span class="fc-high">${Math.round(day.temp_max)}°</span>
@@ -275,7 +280,7 @@
                 </span>
                 <span class="fc-precip">💧 ${day.precip_chance}%</span>
             </div>
-        `).join('');
+        `}).join('');
 
         // Trend cards
         const trendDates = Object.keys(data.trends);

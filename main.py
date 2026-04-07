@@ -22,6 +22,36 @@ def _is_within_nws_range(start_date_str, end_date_str):
     return (end_date - today).days < NWS_MAX_FORECAST_DAYS
 
 
+def _nws_short_forecast_to_wmo_code(short_forecast, precip_chance):
+    """Map NWS shortForecast text to an approximate WMO weather code."""
+    text = (short_forecast or "").lower()
+    if "thunder" in text or "tstm" in text:
+        return 95
+    if "snow" in text and "rain" in text:
+        return 69  # sleet / mixed
+    if "ice" in text or "freezing" in text or "sleet" in text:
+        return 67
+    if "blizzard" in text or "heavy snow" in text:
+        return 75
+    if "snow" in text or "flurr" in text:
+        return 71
+    if "heavy rain" in text or "downpour" in text:
+        return 65
+    if "rain" in text or "drizzle" in text or "shower" in text:
+        return 61
+    if "fog" in text or "mist" in text or "haze" in text:
+        return 45
+    if precip_chance and precip_chance >= 30:
+        return 3  # overcast (likely precip coming)
+    if "cloud" in text or "overcast" in text or "mostly cloudy" in text:
+        return 3
+    if "partly" in text:
+        return 2
+    if "sunny" in text or "clear" in text:
+        return 0
+    return 2  # default to partly cloudy
+
+
 def _fetch_nws_forecast(latitude, longitude, start_date_str, end_date_str):
     """Fetch forecast from the National Weather Service API.
 
@@ -80,6 +110,10 @@ def _fetch_nws_forecast(latitude, longitude, start_date_str, end_date_str):
         entry = day_data[period_date]
         if is_day:
             entry["temp_max"] = temp
+            # Use daytime forecast text for the weather code
+            entry["weather_code"] = _nws_short_forecast_to_wmo_code(
+                p.get("shortForecast"), precip
+            )
         else:
             entry["temp_min"] = temp
         entry["precip_chance"] = max(entry["precip_chance"], precip)
@@ -208,36 +242,81 @@ def forecast():
     if latitude is None or longitude is None or not start_date or not end_date:
         return jsonify({"error": "Missing required parameters"}), 400
 
-    # Use NWS for short-range forecasts (<=7 days), Open-Meteo otherwise
-    data = None
+    # Determine the NWS cutoff date (7 days from today)
+    today = datetime.date.today()
+    nws_cutoff = today + datetime.timedelta(days=NWS_MAX_FORECAST_DAYS)
+    nws_cutoff_str = nws_cutoff.strftime("%Y-%m-%d")
+
+    start_dt = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
+    end_dt = datetime.datetime.strptime(end_date, "%Y-%m-%d").date()
+
+    # Merge per-day results from NWS (short-range) and Open-Meteo (long-range)
+    # day_map: date_str -> {temp_max, temp_min, precip_chance, weather_code, source}
+    day_map = {}
     source = "open-meteo"
+
     try:
-        if _is_within_nws_range(start_date, end_date):
-            nws_data = _fetch_nws_forecast(latitude, longitude, start_date, end_date)
+        # Try NWS for the portion within 7 days
+        nws_end = min(end_dt, nws_cutoff - datetime.timedelta(days=1))
+        if nws_end >= start_dt:
+            nws_data = _fetch_nws_forecast(
+                latitude, longitude, start_date, nws_end.strftime("%Y-%m-%d")
+            )
             if nws_data and "daily" in nws_data:
-                data = nws_data
+                d = nws_data["daily"]
+                for i, date in enumerate(d["time"]):
+                    day_map[date] = {
+                        "temp_max": d["temperature_2m_max"][i],
+                        "temp_min": d["temperature_2m_min"][i],
+                        "precip_chance": d["precipitation_probability_max"][i],
+                        "weather_code": d.get("weathercode", [0] * len(d["time"]))[i],
+                        "source": "nws",
+                    }
                 source = "nws"
 
-        if data is None:
-            data = _fetch_open_meteo_forecast(latitude, longitude, start_date, end_date)
+        # Use Open-Meteo for any days not covered by NWS
+        missing_dates = [
+            (start_dt + datetime.timedelta(days=i)).strftime("%Y-%m-%d")
+            for i in range((end_dt - start_dt).days + 1)
+            if (start_dt + datetime.timedelta(days=i)).strftime("%Y-%m-%d") not in day_map
+        ]
+
+        if missing_dates:
+            om_start = missing_dates[0]
+            om_end = missing_dates[-1]
+            om_data = _fetch_open_meteo_forecast(latitude, longitude, om_start, om_end)
+            if "daily" in om_data:
+                d = om_data["daily"]
+                for i, date in enumerate(d["time"]):
+                    if date not in day_map:
+                        day_map[date] = {
+                            "temp_max": d["temperature_2m_max"][i],
+                            "temp_min": d["temperature_2m_min"][i],
+                            "precip_chance": d["precipitation_probability_max"][i],
+                            "weather_code": d.get("weathercode", [0] * len(d["time"]))[i],
+                            "source": "open-meteo",
+                        }
+                if source == "nws":
+                    source = "nws+open-meteo"
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-    if "daily" not in data:
+    if not day_map:
         return jsonify({"error": "No forecast data returned"}), 500
 
-    daily = data["daily"]
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
     forecast_days = []
     weather_snapshot = {}
-    for i, date in enumerate(daily["time"]):
+    for date in sorted(day_map.keys()):
+        entry = day_map[date]
         day = {
             "date": date,
-            "temp_max": daily["temperature_2m_max"][i],
-            "temp_min": daily["temperature_2m_min"][i],
-            "precip_chance": daily["precipitation_probability_max"][i],
-            "weather_code": daily.get("weathercode", [0] * len(daily["time"]))[i],
+            "temp_max": entry["temp_max"],
+            "temp_min": entry["temp_min"],
+            "precip_chance": entry["precip_chance"],
+            "weather_code": entry["weather_code"],
+            "source": entry["source"],
         }
         forecast_days.append(day)
         weather_snapshot[date] = {
