@@ -10,9 +10,122 @@ app = Flask(__name__, static_folder="static")
 WEATHER_HISTORY_FILE = "weather_history.json"
 
 
-def select_model(end_date_str):
-    return "best_match"
 MAX_HISTORY_SNAPSHOTS = 50
+NWS_MAX_FORECAST_DAYS = 7
+NWS_USER_AGENT = "(weather_trends, contact@example.com)"
+
+
+def _is_within_nws_range(start_date_str, end_date_str):
+    """Check if the entire date range falls within 7 days from today."""
+    today = datetime.date.today()
+    end_date = datetime.datetime.strptime(end_date_str, "%Y-%m-%d").date()
+    return (end_date - today).days < NWS_MAX_FORECAST_DAYS
+
+
+def _fetch_nws_forecast(latitude, longitude, start_date_str, end_date_str):
+    """Fetch forecast from the National Weather Service API.
+
+    Returns a dict matching Open-Meteo's daily structure, or None on failure.
+    NWS only covers US locations and ~7 days out.
+    """
+    headers = {"User-Agent": NWS_USER_AGENT, "Accept": "application/geo+json"}
+
+    # Step 1: resolve grid point
+    points_resp = requests.get(
+        f"https://api.weather.gov/points/{round(latitude, 4)},{round(longitude, 4)}",
+        headers=headers,
+        timeout=10,
+    )
+    if points_resp.status_code != 200:
+        return None
+
+    forecast_url = points_resp.json().get("properties", {}).get("forecast")
+    if not forecast_url:
+        return None
+
+    # Step 2: get the daily forecast
+    fc_resp = requests.get(forecast_url, headers=headers, timeout=10)
+    if fc_resp.status_code != 200:
+        return None
+
+    periods = fc_resp.json().get("properties", {}).get("periods", [])
+    if not periods:
+        return None
+
+    # NWS returns separate day/night periods. Group by date.
+    start_dt = datetime.datetime.strptime(start_date_str, "%Y-%m-%d").date()
+    end_dt = datetime.datetime.strptime(end_date_str, "%Y-%m-%d").date()
+
+    day_data = {}  # date_str -> {temp_max, temp_min, precip_chance, weather_code}
+    for p in periods:
+        period_date = p["startTime"][:10]  # "YYYY-MM-DD"
+        pdate = datetime.datetime.strptime(period_date, "%Y-%m-%d").date()
+        if pdate < start_dt or pdate > end_dt:
+            continue
+
+        temp = p.get("temperature")
+        is_day = p.get("isDaytime", True)
+        precip = (p.get("probabilityOfPrecipitation") or {}).get("value")
+        if precip is None:
+            precip = 0
+
+        if period_date not in day_data:
+            day_data[period_date] = {
+                "temp_max": None,
+                "temp_min": None,
+                "precip_chance": 0,
+                "weather_code": 0,
+            }
+
+        entry = day_data[period_date]
+        if is_day:
+            entry["temp_max"] = temp
+        else:
+            entry["temp_min"] = temp
+        entry["precip_chance"] = max(entry["precip_chance"], precip)
+
+    if not day_data:
+        return None
+
+    # Fill in missing min/max with the other value as fallback
+    for d in day_data.values():
+        if d["temp_max"] is None:
+            d["temp_max"] = d["temp_min"]
+        if d["temp_min"] is None:
+            d["temp_min"] = d["temp_max"]
+
+    # Build the Open-Meteo-compatible daily structure
+    dates_sorted = sorted(day_data.keys())
+    return {
+        "daily": {
+            "time": dates_sorted,
+            "temperature_2m_max": [day_data[d]["temp_max"] for d in dates_sorted],
+            "temperature_2m_min": [day_data[d]["temp_min"] for d in dates_sorted],
+            "precipitation_probability_max": [day_data[d]["precip_chance"] for d in dates_sorted],
+            "weathercode": [day_data[d]["weather_code"] for d in dates_sorted],
+        }
+    }
+
+
+def _fetch_open_meteo_forecast(latitude, longitude, start_date, end_date):
+    """Fetch forecast from the Open-Meteo API. Returns parsed JSON or raises."""
+    resp = requests.get(
+        "https://api.open-meteo.com/v1/forecast",
+        params={
+            "latitude": latitude,
+            "longitude": longitude,
+            "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode",
+            "timezone": "auto",
+            "start_date": start_date,
+            "end_date": end_date,
+            "wind_speed_unit": "mph",
+            "temperature_unit": "fahrenheit",
+            "precipitation_unit": "inch",
+            "models": "best_match",
+        },
+        timeout=10,
+    )
+    return resp.json()
 
 
 def load_weather_history():
@@ -95,24 +208,18 @@ def forecast():
     if latitude is None or longitude is None or not start_date or not end_date:
         return jsonify({"error": "Missing required parameters"}), 400
 
+    # Use NWS for short-range forecasts (<=7 days), Open-Meteo otherwise
+    data = None
+    source = "open-meteo"
     try:
-        resp = requests.get(
-            "https://api.open-meteo.com/v1/forecast",
-            params={
-                "latitude": latitude,
-                "longitude": longitude,
-                "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode",
-                "timezone": "auto",
-                "start_date": start_date,
-                "end_date": end_date,
-                "wind_speed_unit": "mph",
-                "temperature_unit": "fahrenheit",
-                "precipitation_unit": "inch",
-                "models": select_model(end_date),
-            },
-            timeout=10,
-        )
-        data = resp.json()
+        if _is_within_nws_range(start_date, end_date):
+            nws_data = _fetch_nws_forecast(latitude, longitude, start_date, end_date)
+            if nws_data and "daily" in nws_data:
+                data = nws_data
+                source = "nws"
+
+        if data is None:
+            data = _fetch_open_meteo_forecast(latitude, longitude, start_date, end_date)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -204,6 +311,7 @@ def forecast():
         "chart_series": chart_series,
         "snapshot_count": len(loc_history) + (1 if should_save else 0),
         "fetched_at": now,
+        "source": source,
     })
 
 
