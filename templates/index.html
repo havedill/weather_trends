@@ -248,7 +248,8 @@
             lastData = data;
             renderDashboard(data);
             renderChart(data);
-            statusText.innerHTML = `<span class="status-dot"></span>Updated ${data.fetched_at} · ${data.snapshot_count} snapshot(s)`;
+            const sourceLabel = data.source === 'nws' ? 'NWS' : 'Open-Meteo';
+            statusText.innerHTML = `<span class="status-dot"></span>Updated ${data.fetched_at} · ${data.snapshot_count} snapshot(s) · Source: ${sourceLabel}`;
         } catch (err) {
             statusText.innerHTML = `<span class="status-dot" style="background:var(--red);box-shadow:0 0 6px var(--red)"></span>Error: ${err.message}`;
         } finally {
