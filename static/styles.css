@@ -283,6 +283,28 @@ header p {
     color: var(--blue);
 }
 
+/* ── Source Badges ── */
+.fc-source {
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    min-width: 70px;
+    text-align: center;
+}
+
+.source-nws {
+    background: rgba(68, 170, 255, 0.15);
+    color: var(--blue);
+}
+
+.source-om {
+    background: rgba(255, 153, 0, 0.15);
+    color: #ff9900;
+}
+
 /* ── Trend Cards ── */
 .trend-panel {
     padding: 20px 24px;
